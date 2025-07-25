@@ -1,0 +1,253 @@
+---
+title: "example-workflow-vignette"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{example-workflow-vignette}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(BoneDensityMapping)
+library(rgl)
+
+```
+
+Import your data, including the bone mesh stl model, bone landmarks file, 
+and the CT scan. 
+```{r}
+url <- "https://github.com/Telfer/BoneDensityMapping/releases/download/v1.0.2/test_CT_hip.nii.gz"
+scan_filepath <- tempfile(fileext = ".nii.gz")
+download.file(url, scan_filepath, mode = "wb")
+CTscan <- import_scan(scan_filepath)
+
+url2 <- "https://github.com/Telfer/BoneDensityMapping/releases/download/v1.0.2/test_CT_femur.stl"
+bone_filepath <- tempfile(fileext = ".stl")
+download.file(url2, bone_filepath, mode = "wb")
+surface_mesh <- import_mesh(bone_filepath)
+
+landmark_path <- system.file("extdata", "test_femur.mrk.json",
+                             package = "BoneDensityMapping")
+landmarks <- import_lmks(landmark_path)
+```
+
+It may be helpful to check that the imported landmarks are on or near the surface of the bone mesh. 
+The following example verifies that all landmarks are within 1mm of the mesh. 
+```{r}
+landmark_check(surface_mesh, landmarks, threshold = 1.0)
+```
+p
+The following function checks that the mesh coordinates are constrained within the boundaries of the CT scan:
+```{r}
+bone_scan_check(surface_mesh, CTscan)
+```
+
+The bone density values of the mesh vertices can be determined. The output, surface density, is a data frame of densities corresponding to each point on the bone surface. 
+```{r}
+vertices <- t(surface_mesh$vb)[, c(1:3)]
+surface_density <- surface_normal_intersect(surface_mesh, vertices, normal_dist = 3.0, CTscan)
+```
+
+The color_map function will assign colors to the density values. 
+```{r}
+surface_colors <- color_mapping(surface_density, maxi = 2000, mini = 0)
+```
+
+Then, the colored mesh can be plotted.
+```{r}
+plot_mesh(surface_mesh, surface_colors, title = 'Bone surface', legend_maxi = 2000, legend_mini = 0)
+```
+
+# Plot cross section
+To visualize internal bone, the bone can be "filled" with points. The following function returns a matrix called "internal_points" with around 7000 fill coordinates. 
+```{r}
+internal_fill <- fill_bone_points(surface_mesh, 1)
+```
+
+The function voxel_point_intersect can be used to find approximate bone density values on any point in the bone (internal or surface). The function will be used to calculate the densities of the internal fill in this case. 
+```{r}
+internal_density <- voxel_point_intersect(internal_fill, CTscan)
+```
+
+We can also map the internal bone density values to colors as shown.
+```{r}
+internal_colors <- color_mapping(internal_density, maxi = 2000, mini = 0)
+```
+
+A cross section of the bone can also be plotted to visualize internal density.
+```{r}
+plot_cross_section_bone(surface_mesh, surface_colors, IncludeSurface = FALSE, internal_fill, internal_colors, slice_axis = 'x', slice_val = 0.5, legend_maxi = 2000, legend_mini = 0)
+```
+
+
+## --- Group bone analysis --- ## 
+Import data, including bone mesh, landmarks file, and CT scan for each patient in your dataset. 
+```{r}
+patients <- list()
+
+base_url <- "https://github.com/Telfer/BoneDensityMapping/releases/download/v1.0.2/"
+patients <- list()
+
+for (i in 1:6) {
+  id <- paste0("SCAP00", i)
+  
+  mesh_url <- paste0(base_url, id, ".stl")
+  ct_url <- paste0(base_url, id, "_resampled.nii.gz")
+  
+  mesh_path <- tempfile(fileext = ".stl")
+  ct_path <- tempfile(fileext = ".nii.gz")
+  
+  download.file(mesh_url, mesh_path, mode = "wb")
+  download.file(ct_url, ct_path, mode = "wb")
+  
+  landmark_path <- system.file("extdata", paste0(id, "_landmarks.fcsv"), package = "BoneDensityMapping")
+  
+  patients[[id]] <- list(
+    mesh = import_mesh(mesh_path),
+    landmarks = import_lmks(landmark_path),
+    ct = import_scan(ct_path)
+  )
+}
+```
+
+
+One bone must be designated the "template" bone; all other bones in the dataset will be mapped to this bone model for comparison. The following function places 100 new points (in addition to landmark points) across the surface of the template bone. 
+```{r}
+patients$SCAP001$surface_points <- surface_points_template(patients$SCAP001$mesh, patients$SCAP001$landmarks, 5000)  
+```
+
+Then, this function can be applied to all other bones in the set to map all template points to the new bone, creating a consistent set of surface points. The remapping function will fail on chiral objects, so you have the option to temporarily mirror the new bone for the warping process. The function returns a set of points in their original unmirrored form which each correspond to a point on the template surface. Enable plot_check to check laterality before and after the mirroring process. 
+
+#loop thru 
+```{r}
+patient_sides <- data.frame(
+  ID = sprintf("SCAP%03d", 1:6),
+  Side = c("LEFT", "RIGHT", "LEFT", "LEFT", "RIGHT", "RIGHT"),
+  stringsAsFactors = FALSE
+)
+
+for (i in 2:6) {
+  id <- sprintf("SCAP%03d", i)
+
+  mirror_side <- if (patient_sides$Side[i] == "RIGHT") "x" else FALSE
+
+  patients[[id]]$surface_points <- surface_points_new(
+    patients[[id]]$mesh,
+    patients[[id]]$landmarks,
+    patients$SCAP001$surface_points,
+    mirror = mirror_side,
+    plot_check = FALSE
+  ) 
+}
+```
+
+Then, density values of each bone can be calculated.  
+```{r}
+for (i in 1:6) {
+  id <- sprintf("SCAP%03d", i)
+
+  patients[[id]]$surface_density <- surface_normal_intersect(
+    patients[[id]]$mesh,
+    patients[[id]]$surface_points,
+    normal_dist = 1.0,
+    patients[[id]]$ct
+  )
+}
+```
+
+The we can color the template mesh according to the density of each of the bones in the group.
+```{r}
+for (i in 1:6) {
+  id <- sprintf("SCAP%03d", i)
+  
+  patients[[id]]$colored_mesh <- color_mesh(
+    patients$SCAP001$mesh,
+    patients$SCAP001$surface_points,
+    patients[[id]]$surface_density,
+    maxi = 2100, 
+    mini = 0
+  )
+}
+
+plot_mesh(patients$SCAP001$colored_mesh, title = 'SCAP001')
+plot_mesh(patients$SCAP002$colored_mesh, title = 'SCAP002')
+plot_mesh(patients$SCAP003$colored_mesh, title = 'SCAP003')
+plot_mesh(patients$SCAP004$colored_mesh, title = 'SCAP004')
+plot_mesh(patients$SCAP005$colored_mesh, title = 'SCAP005')
+plot_mesh(patients$SCAP006$colored_mesh, title = 'SCAP006')
+
+```
+
+The average bone density can be calculated like so:
+```{r}
+# Collect all surface density vectors into a matrix
+density_matrix <- do.call(cbind, lapply(1:6, function(i) {
+  id <- sprintf("SCAP%03d", i)
+  patients[[id]]$surface_density
+}))
+
+# Average across columns (i.e. across patients), row by row
+average_density <- rowMeans(density_matrix)
+
+average_colored_mesh <- color_mesh(
+    patients$SCAP001$mesh,
+    patients$SCAP001$surface_points,
+    average_density
+  )
+
+plot_mesh(average_colored_mesh, title = 'avg')
+```
+
+Bones can also be separated into different groups. Young: 1,4,6 vs Old: 2,3,5
+```{r}
+# Define patient IDs
+young_ids <- c(1, 4, 6)
+old_ids <- c(2, 3, 5)
+
+# Helper function to get surface densities
+get_densities <- function(indices) {
+  do.call(cbind, lapply(indices, function(i) {
+    id <- sprintf("SCAP%03d", i)
+    patients[[id]]$surface_density
+  }))
+}
+
+average_young_density <- rowMeans(get_densities(young_ids))
+average_old_density <- rowMeans(get_densities(old_ids))
+
+# Create colored meshes for each group
+young_colored_mesh <- color_mesh(patients$SCAP001$mesh, patients$SCAP001$surface_points, average_young_density)
+old_colored_mesh <- color_mesh(patients$SCAP001$mesh, patients$SCAP001$surface_points, average_old_density)
+
+close3d()
+plot_mesh(young_colored_mesh, title = "Young Group")
+plot_mesh(old_colored_mesh, title = "Old Group")
+
+
+density_diff <- average_young_density - average_old_density
+max_abs <- max(abs(density_diff))
+
+# Color scheme: red = young > old, blue = old > young
+my_colors <- c("blue", "white", "red")
+
+# Create colored mesh of differences
+diff_colored_mesh <- color_mesh(
+  patients$SCAP001$mesh,
+  patients$SCAP001$surface_points,
+  density_diff,
+  maxi = max_abs,
+  mini = -max_abs,
+  color_sel = my_colors
+)
+
+# Plot it
+plot_mesh(diff_colored_mesh, title = "Young - Old Density Difference", legend_maxi = max_abs, legend_mini = -max_abs, legend_color_sel = my_colors)
+```
+
