@@ -9,6 +9,9 @@
 #' @author Scott Telfer \email{scott.telfer@gmail.com}
 #' @param landmark_path String. File path to landmark data. .json or .fcsv
 #' format
+#' @param x Integer Value to apply to convert mesh i.e. -1 will mirror x coords
+#' @param y Integer Value to apply to convert mesh i.e. -1 will mirror y coords
+#' @param z Integer Value to apply to convert mesh i.e. -1 will mirror z coords
 #' @return dataframe. Columns are landmark name, x, y, and z coordinates
 #' @examples
 #' landmark_path <- system.file("extdata", "test_femur.mrk.json",
@@ -17,7 +20,7 @@
 #' @importFrom rjson fromJSON
 #' @importFrom tools file_ext
 #' @export
-import_lmks <- function(landmark_path) {
+import_lmks <- function(landmark_path, x = 1, y = 1, z = 1) {
   file_type <- file_ext(landmark_path)
 
   if (file_type == "json") {
@@ -43,6 +46,13 @@ import_lmks <- function(landmark_path) {
   } else {
     stop("Unsupported file type: must be .json or .fcsv")
   }
+
+  # Apply mirroring if required
+  df$x <- df$x * x
+  df$y <- df$y * y
+  df$z <- df$z * z
+
+  # return
   return(df)
 }
 
@@ -1350,56 +1360,4 @@ ct_calibration <- function(ct_nos, calibration_type, params) {
 
   # return
   return(density_vals)
-}
-
-
-#' Reorientate landmarks
-#' @author Scott Telfer \email{scott.telfer@gmail.com}
-#' @param landmark_path String
-#' @param x Integer Value to apply to convert mesh i.e. -1 will mirror x coords
-#' @param y Integer Value to apply to convert mesh i.e. -1 will mirror y coords
-#' @param z Integer Value to apply to convert mesh i.e. -1 will mirror z coords
-#' @return Overwritten landmark file
-#' @examples
-#' landmark_path <- system.file("extdata", "test_femur.mrk.json",
-#'                              package = "BoneDensityMapping")
-#' reoriented_landmarks <- reorientate_landmarks(landmark_path)
-#' @importFrom utils read.table write.table
-#' @importFrom jsonlite read_json write_json
-#' @export
-reorientate_landmarks <- function(landmark_path, x = 1, y = 1, z = 1) {
-  # Check file extension
-  file_ext <- tools::file_ext(landmark_path)
-
-  if (file_ext == "fcsv") {
-    # Handle FCSV format
-    header <- readLines(landmark_path, n = 3)
-    lmks <- read.table(landmark_path, sep = ",", skip = 3, header = TRUE)
-
-    # Apply mirroring
-    lmks[, "x"] <- lmks[, "x"] * x
-    lmks[, "y"] <- lmks[, "y"] * y
-    lmks[, "z"] <- lmks[, "z"] * z
-
-    # Overwrite file with header and new landmark coordinates
-    writeLines(header, con = landmark_path)
-    write.table(lmks, file = landmark_path, append = TRUE, sep = ",",
-                row.names = FALSE, col.names = TRUE)
-
-  } else if (file_ext == "json") {
-    # Handle JSON format
-    data <- read_json(landmark_path)  # no simplifyVector!
-
-    for (i in seq_along(data$markups[[1]]$controlPoints)) {
-      coords <- as.numeric(data$markups[[1]]$controlPoints[[i]]$position)
-      data$markups[[1]]$controlPoints[[i]]$position <- c(coords[1] * x,
-                                                         coords[2] * y,
-                                                         coords[3] * z)
-    }
-
-    write_json(data, landmark_path, auto_unbox = TRUE, pretty = TRUE)
-
-  } else {
-    stop("Unsupported file type. Only .fcsv and .json formats are supported.")
-  }
 }

@@ -1,7 +1,7 @@
 Package: BoneDensityMapping
 Type: Package
 Title: Maps Bone Densities from CT Scans to Surface Models
-Version: 0.1.1
+Version: 0.1.2
 Authors@R: c(person("Scott", "Telfer", , "scott.telfer@gmail.com", role = c("aut", "cre", "cph"), comment = c(ORCID = "0000-0002-0104-4027")), 
              person("Lucas", "Lacambra", , "lucasal2@illinois.edu", role = c("aut")))
 Maintainer: Scott Telfer <scott.telfer@gmail.com>
@@ -10,16 +10,15 @@ License: MIT + file LICENSE
 Encoding: UTF-8
 RoxygenNote: 7.3.2
 Imports: cowplot, ggplot2, ggpubr, methods, oro.nifti, ptinpoly, rdist,
-        rjson, concaveman, geometry, sp, jsonlite, rgl, RNifti, Rvcg,
-        FNN, nat
+        rjson, concaveman, geometry, sp, rgl, RNifti, Rvcg, FNN, nat
 Depends: R (>= 2.10)
 Suggests: knitr, rmarkdown, testthat (>= 3.0.0)
 Config/testthat/edition: 3
 VignetteBuilder: knitr
 NeedsCompilation: no
-Packaged: 2025-07-23 16:46:17 UTC; telfe
+Packaged: 2025-07-28 18:20:06 UTC; telfe
 Author: Scott Telfer [aut, cre, cph] (ORCID:
     <https://orcid.org/0000-0002-0104-4027>),
   Lucas Lacambra [aut]
 Repository: CRAN
-Date/Publication: 2025-07-25 10:10:14 UTC
+Date/Publication: 2025-07-28 18:40:23 UTC
